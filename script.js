@@ -69,6 +69,8 @@ function checkForMatch() {
   attempts++;
   attemptsSpan.textContent = attempts;
 
+  registrarTentativa(); // 🔹 salva estado local a cada tentativa
+
   // Verifica se os data-attributes das duas cartas são iguais
   let isMatch = firstCard.dataset.cardValue === secondCard.dataset.cardValue;
 
@@ -201,3 +203,70 @@ function saveScoreByForm(playerName) {
   document.getElementById('scoreForm').submit();
 }
 */
+
+// ===============================================================
+// PERSISTÊNCIA HÍBRIDA (LOCAL + SERVIDOR)
+// ===============================================================
+const API_SYNC = "includes/api/sync_estado.php";
+
+// Identificador persistente do jogador
+if (!localStorage.getItem('jogador_id')) {
+  localStorage.setItem('jogador_id', crypto.randomUUID());
+}
+
+// Função: salvar estado local
+function salvarEstadoLocal(dados) {
+  const payload = {
+    jogador_id: localStorage.getItem('jogador_id'),
+    estado: dados,
+    tentativas: attempts,
+    timestamp: Math.floor(Date.now() / 1000)
+  };
+  localStorage.setItem('estado_jogo', JSON.stringify(payload));
+  return payload;
+}
+
+// Função: sincronizar com o servidor
+async function sincronizarComServidor() {
+  const saved = localStorage.getItem('estado_jogo');
+  if (!saved) return;
+  const payload = JSON.parse(saved);
+
+  try {
+    const resp = await fetch(API_SYNC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await resp.json();
+    if (data.status === 'ok') {
+      console.log('✅ Sincronizado com sucesso:', data);
+    } else {
+      console.warn('⚠️ Falha na sincronização:', data);
+    }
+  } catch (err) {
+    console.warn('🌐 Offline ou erro de rede:', err);
+  }
+}
+
+// Inicializa sincronização automática
+function iniciarAutoSync() {
+  sincronizarComServidor();
+  setInterval(sincronizarComServidor, 300000); // a cada 5 min
+  window.addEventListener('online', sincronizarComServidor);
+}
+
+// Chamamos no início do jogo
+iniciarAutoSync();
+
+// ===============================================================
+// Exemplo: salvar progresso durante o jogo
+// ===============================================================
+function registrarTentativa() {
+  const estadoAtual = {
+    paresEncontrados: matchedPairs,
+    tentativasTotais: attempts,
+  };
+  salvarEstadoLocal(estadoAtual);
+}
